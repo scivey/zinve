@@ -1,15 +1,19 @@
 #!/usr/bin/env zsh
 
 if [[ -z ${ZINVE__PARAM__VENVS_BASEDIR+x} ]]; then
-    typeset -gx  ZINVE__PARAM__VENVS_BASEDIR=""
+     typeset -gx ZINVE__PARAM__VENVS_BASEDIR=""
 fi
+export ZINVE__PARAM__VENVS_BASEDIR
+
 if [[ -z ${ZINVE__PARAM__TARGET_PYTHON_BIN+x} ]]; then
-    typeset -gx  ZINVE__PARAM__TARGET_PYTHON_BIN="python3"
+    typeset -gx ZINVE__PARAM__TARGET_PYTHON_BIN="python3"
 fi
+export ZINVE__PARAM__TARGET_PYTHON_BIN
 
 if [[ -z ${ZINVE__PARAM__TARGET_NAME+x} ]]; then
-    typeset -gx  ZINVE__PARAM__TARGET_NAME="default"
+    typeset -gx ZINVE__PARAM__TARGET_NAME="default"
 fi
+export ZINVE__PARAM__TARGET_NAME
 
 if [[ -z ${ZINVE__PARAM__TARGET_REQUIREMENTS_FILES+x} ]]; then
     typeset -agx ZINVE__PARAM__TARGET_REQUIREMENTS_FILES=()

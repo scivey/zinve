@@ -1,5 +1,8 @@
 #!/usr/bin/env zsh
 
+setopt errexit
+set -uo pipefail
+
 
 zinve::venv::get-named-venv-dir() {
     local name=$1 pybin=$2 ; shift 2 ;
@@ -62,60 +65,80 @@ zinve::venv::ensure-named-venv() {
         needed_req_files+=( $curr_reqf )
     done
     if [ $upit = true ]; then
-        typeset -a pip_call=(
-            "$venv_d/bin/pip" install
-        )
-        for curr_reqf in ${needed_req_files[@]}; do
-            pip_call+=( '-r' $curr_reqf )
-        done
-        ${pip_call[@]}
+        if [[ ${#needed_req_files} -gt 0 ]]; then
+            typeset -a pip_call=(
+                "$venv_d/bin/pip" install
+            )
+            for curr_reqf in ${needed_req_files[@]}; do
+                pip_call+=( '-r' $curr_reqf )
+            done
+            if ! ${pip_call[@]}; then
+                zinve::fatal "call failed: '${pip_call[*]}'"
+                return 1 ;
+            fi
+        fi
         for digf digv in ${(kv)output_digests}; do
             local tempf="${digf}.tmp~"
             rm -f $tempf ; echo $digv > $tempf ;
-            mv -f $temf $digf ;
+            mv -f $tempf $digf ;
         done
     fi
 }
 
 
 _zinve::venv::run-or-exec-in-venv-explicit() {
-    local name=$1 ; shift ;
-    local pybin=$1 ; shift ;
-    zinve::venv::ensure-named-venv $name $pybin ;
-    local venv_d ;
-    read -r venv_d < <( zinve::venv::get-named-venv-dir $name $pybin ) ;
-
+    zinve::info "$0: args='$*'"
     local cmd_name=${1:u} ; shift ;
-    local bin_name=$1 ; shift ;
-    local target=$venv_d/bin/$bin_name
-    if [[ ! -e $target ]]; then
-        zinve::fatal "Can't find '$bin_name'. Expected at path '$target'" ;
+    local venv_name=$1 ; shift ;
+    local python_bin=$1 ; shift ;
+    zinve::venv::ensure-named-venv $venv_name $python_bin ;
+    local venv_d ;
+    read -r venv_d < <(
+        zinve::venv::get-named-venv-dir $venv_name $python_bin
+    ) ;
+    local targ_name=$1 ; shift ;
+    local targ_fpath=$venv_d/bin/$targ_name
+    if [[ ! -e $targ_fpath ]]; then
+        zinve::fatal "Can't find '$targ_name'. Expected at path '$targ_fpath'" ;
         return 1 ; # not reached
     fi
     case $cmd_name in
-        CMD_EXEC) { exec $target $@ ; } ;;
-        CMD_RUN) { $target $@ ; return ; } ;;
+        CMD_EXEC) { exec $targ_fpath $@ ; } ;;
+        CMD_RUN) { $targ_fpath $@ ; return ; } ;;
         *) { zinve::fatal "$0 invalid command '$cmd_name'" ; } ;;
     esac
 }
 
+
+
 zinve::venv::run-in-venv-explicit() {
+    zinve::info "$0 : args='$*'"
     _zinve::venv::run-or-exec-in-venv-explicit 'CMD_EXEC' $@ ;
 }
 
 zinve::venv::exec-in-venv-explicit() {
+    zinve::info "$0 : args='$*'"
     _zinve::venv::run-or-exec-in-venv-explicit 'CMD_RUN' $@ ;
 }
 
 zinve::venv::run-in-venv-implicit() {
     local vname=${ZINVE__PARAM__TARGET_NAME}
     local pname=${ZINVE__PARAM__TARGET_PYTHON_BIN}
-    zinve::venv::run-in-venv-explicit $vname $pname ;
+    zinve::venv::run-in-venv-explicit $vname $pname $@ ;
 }
 
 zinve::venv::exec-in-venv-implicit() {
     local vname=${ZINVE__PARAM__TARGET_NAME}
     local pname=${ZINVE__PARAM__TARGET_PYTHON_BIN}
-    zinve::venv::exec-in-venv-explicit $vname $pname ;
+    zinve::venv::exec-in-venv-explicit $vname $pname $@ ;
 }
+zinve::venv::debug() {
+    echo "VARS: " ;
+    printf -- '%*s\n\n' 32 "" ;
+
+    typeset -p | sort | ansifilter | sed -r 's/^/      | /' ;
+    printf '\n' ;
+    printf -- '%*s\n' 32 "" ;
+}
+
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env zsh
 
-setopt localoptions localtraps
+setopt errexit
+setopt localtraps
+set -uo pipefail
 
-[[ $- == *"i"* ]] || set -euo pipefail ;
 
 
 if [[ ${ZINVE__CONFIG__IS_PROD_BUNDLE:-""} != "1" ]]; then
@@ -24,6 +25,19 @@ zinve-main-cmd::exec() {
 }
 zinve-main-cmd::run() {
     zinve::venv::run-in-venv-implicit $@ ;
+}
+
+zinve-main-cmd::debug2() {
+    zinve::venv::debug $@ ;
+}
+
+zinve-main-cmd::debug() {
+    echo "VARS: " ;
+    printf -- '%*s\n\n' 32 "" ;
+
+    typeset -p | sort | ansifilter | sed -r 's/^/      | /' ;
+    printf '\n' ;
+    printf -- '%*s\n' 32 "" ;
 }
 
 __runit() {
