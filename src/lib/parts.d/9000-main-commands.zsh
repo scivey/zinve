@@ -1,24 +1,5 @@
 #!/usr/bin/env zsh
 
-setopt errexit
-setopt localtraps
-set -uo pipefail
-
-
-
-if [[ ${ZINVE__CONFIG__IS_PROD_BUNDLE:-""} != "1" ]]; then
-    if [[ -z ${ZINVE__LOADER_FPATH+x} ]]; then
-        ZINVE__LOADER_FPATH=${0:A:h:h}/lib/loader.zsh
-    fi
-    if [[ -e ${ZINVE__LOADER_FPATH} ]]; then
-        . ${ZINVE__LOADER_FPATH}
-        zinve::loader::load-all-libs ;
-    else
-        echo "ERROR: SOURCE TARGET '$ZINVE__LOADER_FPATH' NOT FOUND!" >&2 ;
-        exit 1 ;
-    fi
-fi
-
 
 zinve-main-cmd::exec() {
     zinve::venv::exec-in-venv-implicit $@ ;
@@ -40,7 +21,7 @@ zinve-main-cmd::debug() {
     printf -- '%*s\n' 32 "" ;
 }
 
-__runit() {
+zinve-main-dispatch() {
     local cmdname=""
     typeset -a py_call=()
     local venv_name="" ;
@@ -79,6 +60,5 @@ __runit() {
     ${cmd_func} ${py_call[@]}
 }
 
-__runit $@
 
 
