@@ -18,13 +18,13 @@ _ZINVE_LOG_LVL_TO_NUMS=(
     INFO 5000
     DEBUG 10000
 )
-_zinve::log::put-with-level-unguarded() {
+_zinve::log::log-with-level-unguarded() {
     local lvl=$1 ; shift ;
     local name="$ZINVE__LOG_NAME" ;
     printf '[ %s ] %s  -  %s\n' "$name" "$lvl" "$*" >&2 ;
 }
 _zinve::log::err-invalid-level-common() {
-    _zinve::log::put-with-level-unguarded 'FATAL' "Invalid log level '$1'"
+    _zinve::log::log-with-level-unguarded 'FATAL' "Invalid log level '$1'"
     zinve::die-impl ;
     return 1;
 }
@@ -32,14 +32,14 @@ _zinve::log::err-invalid-level-common() {
 _zinve::log::err-invalid-level-arg() {
     local lvl=$1 ; shift ;
     local errmsg="Invalid log level '$lvl' for message '$*'"
-    _zinve::log::put-with-level-unguarded 'WARN' $errmsg
+    _zinve::log::log-with-level-unguarded 'WARN' $errmsg
     _zinve::log::err-invalid-level-common $lvl ;
 }
 
 _zinve::log::err-invalid-level-config() {
     local param_lvl=$1 ; shift ;
     local msg_lvl=$1 ; shift ;
-    local ngl='_zinve::log::put-with-level-unguarded'
+    local ngl='_zinve::log::log-with-level-unguarded'
     typeset -a nglw=( $ngl 'WARN' )
 
     ${nglw[@]} "Invalid logging configuration."
@@ -54,7 +54,7 @@ _zinve::log::err-invalid-level-config() {
     _zinve::log::err-invalid-level-common $param_lvl ;
 }
 
-_zinve::log::put-with-level() {
+_zinve::log::log-with-level() {
     local lvl=${1:u} ; shift ;
     typeset -i lvl_score=0
     local lvl_score_str="" ;
@@ -76,24 +76,25 @@ _zinve::log::put-with-level() {
     fi
     lvl_param_no=$lvl_param_no_str
     if [[ $lvl_score -le $lvl_param_no_str ]]; then
-        _zinve::log::put-with-level-unguarded $lvl $@
+        _zinve::log::log-with-level-unguarded $lvl $@
     fi
 }
 
 zinve::log::info() {
-    _zinve::log::log-with-level ${ZINVE__LOG_INFO} $@
+    _zinve::log::log-with-level ${ZINVE__LOG_LVL_INFO} $@
 }
 
 zinve::log::warn() {
-    _zinve::log::log-with-level ${ZINVE__LOG_WARN} $@
+    _zinve::log::log-with-level ${ZINVE__LOG_LVL_WARN} $@
 }
 
 zinve::log::debug() {
-    _zinve::log::log-with-level ${ZINVE__LOG_DEBUG} $@
+    _zinve::log::log-with-level ${ZINVE__LOG_LVL_DEBUG} $@
 }
 
 zinve::log::fatal() {
-    _zinve::log::log-with-level ${ZINVE__LOG_FATAL} $@
+    _zinve::log::log-with-level ${ZINVE__LOG_LVL_FATAL} $@
+    zinve::die-impl ;
 }
 
 alias zinve::info='zinve::log::info'

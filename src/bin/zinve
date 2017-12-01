@@ -51,9 +51,10 @@ __runit() {
             if [[ $cmdname == "" ]]; then
                 cmdname=$curr ; continue ;
             fi
-            zinve::fatal "unknown command '$curr'" ;
+            zinve::fatal "unexpected argument '$curr'" ;
         fi
     done
+    if [[ $cmdname != "" ]] || zinve::fatal "Expected a command." ;
     [[ $base_d == "" ]] || ZINVE__PARAM__VENVS_BASEDIR=$base_d ;
     [[ $p_name == "" ]] || ZINVE__PARAM__TARGET_PYTHON_BIN=$p_name ;
     [[ $venv_name == "" ]] || ZINVE__PARAM__TARGET_NAME=$venv_name ;
