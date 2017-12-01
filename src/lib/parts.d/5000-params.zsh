@@ -1,0 +1,25 @@
+#!/usr/bin/env zsh
+
+if [[ -z ${ZINVE__PARAM__VENVS_BASEDIR+x} ]]; then
+    typeset -gx  ZINVE__PARAM__VENVS_BASEDIR=""
+fi
+if [[ -z ${ZINVE__PARAM__TARGET_PYTHON_BIN+x} ]]; then
+    typeset -gx  ZINVE__PARAM__TARGET_PYTHON_BIN="python3"
+fi
+
+if [[ -z ${ZINVE__PARAM__TARGET_NAME+x} ]]; then
+    typeset -gx  ZINVE__PARAM__TARGET_NAME="default"
+fi
+
+if [[ -z ${ZINVE__PARAM__TARGET_REQUIREMENTS_FILES+x} ]]; then
+    typeset -agx ZINVE__PARAM__TARGET_REQUIREMENTS_FILES=()
+fi
+
+typeset -gx  ZINVE__CONST__CACHE_DIR_BASENAME="cache"
+typeset -gx  ZINVE__CONST__DIGEST_DIR_BASENAME="digests"
+typeset -gx  ZINVE__CONST__CACHE_DIR_REL_VENV=$ZINVE__CONST__CACHE_DIR_BASENAME
+
+typeset -gx  ZINVE__CONST__DIGEST_DIR_REL_VENV=""
+ZINVE__CONST__DIGEST_DIR_REL_VENV=$ZINVE__CONST__CACHE_DIR_REL_VENV
+ZINVE__CONST__DIGEST_DIR_REL_VENV+="/$ZINVE__CONST__DIGEST_DIR_BASENAME"
+
