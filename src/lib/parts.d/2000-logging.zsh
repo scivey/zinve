@@ -93,7 +93,9 @@ zinve::log::debug() {
 }
 
 zinve::log::fatal() {
-    _zinve::log::log-with-level ${ZINVE__LOG_LVL_FATAL} $@
+    {
+        _zinve::log::log-with-level ${ZINVE__LOG_LVL_FATAL} $@ 2>&1 ;
+    } | zinve::fmt::fg red ;
     zinve::die-impl ;
 }
 
