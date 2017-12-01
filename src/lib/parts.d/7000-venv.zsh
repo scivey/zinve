@@ -78,7 +78,7 @@ zinve::venv::ensure-named-venv() {
 }
 
 
-_zinve::venv::run-or-exec-in-named-venv() {
+_zinve::venv::run-or-exec-in-venv-explicit() {
     local name=$1 ; shift ;
     local pybin=$1 ; shift ;
     zinve::venv::ensure-named-venv $name $pybin ;
@@ -99,12 +99,23 @@ _zinve::venv::run-or-exec-in-named-venv() {
     esac
 }
 
-zinve::venv::run-in-named-venv() {
-    _zinve::venv::run-or-exec-in-named-venv 'CMD_EXEC' $@ ;
+zinve::venv::run-in-venv-explicit() {
+    _zinve::venv::run-or-exec-in-venv-explicit 'CMD_EXEC' $@ ;
 }
 
-zinve::venv::exec-in-named-venv() {
-    _zinve::venv::run-or-exec-in-named-venv 'CMD_RUN' $@ ;
+zinve::venv::exec-in-venv-explicit() {
+    _zinve::venv::run-or-exec-in-venv-explicit 'CMD_RUN' $@ ;
 }
 
+zinve::venv::run-in-venv-implicit() {
+    local vname=${ZINVE__PARAM__TARGET_NAME}
+    local pname=${ZINVE__PARAM__TARGET_PYTHON_BIN}
+    zinve::venv::run-in-venv-explicit $vname $pname ;
+}
+
+zinve::venv::exec-in-venv-implicit() {
+    local vname=${ZINVE__PARAM__TARGET_NAME}
+    local pname=${ZINVE__PARAM__TARGET_PYTHON_BIN}
+    zinve::venv::exec-in-venv-explicit $vname $pname ;
+}
 
