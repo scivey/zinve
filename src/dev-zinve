@@ -6,7 +6,7 @@ set -uo pipefail
 
 if [[ ${ZINVE__CONFIG__IS_PROD_BUNDLE:-""} != "1" ]]; then
     if [[ -z ${ZINVE__LOADER_FPATH+x} ]]; then
-        ZINVE__LOADER_FPATH=${0:A:h:h}/lib/loader.zsh
+        ZINVE__LOADER_FPATH=${0:A:h}/lib-loader.zsh
     fi
     if [[ -e ${ZINVE__LOADER_FPATH} ]]; then
         . ${ZINVE__LOADER_FPATH}

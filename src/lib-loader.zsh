@@ -2,7 +2,6 @@
 
 zinve::noop() { true ; }
 
-
 zinve::die-impl() {
     [[ $- == *'i'* ]] || exit 1 ;
     return 1 ;
@@ -12,7 +11,7 @@ _ZINVE__LOADER_SCRIPT_FPATH=${0:A}
 
 if [[ -z ${ZINVE__CONFIG__IS_PROD_BUNDLE+x} ]]; then
     _loader_tmp_is_bundle="1"
-    if [[ ${_ZINVE__LOADER_SCRIPT_FPATH:t} == "loader.zsh" ]]; then
+    if [[ ${_ZINVE__LOADER_SCRIPT_FPATH:t} == "lib-loader.zsh" ]]; then
         _loader_tmp_is_bundle=""
     fi
     ZINVE__CONFIG__IS_PROD_BUNDLE=${_loader_tmp_is_bundle}
@@ -83,7 +82,7 @@ function zinve::loader::source-dir() {
 
 function zinve::loader::load-all-libs() {
     if [ "${ZINVE__CONFIG__IS_PROD_BUNDLE:-""}" != "1" ]; then
-        zinve::loader::source-dir ${_ZINVE__LOADER_SCRIPT_FPATH:h}/parts.d
+        zinve::loader::source-dir ${_ZINVE__LOADER_SCRIPT_FPATH:h}/lib
     fi
 }
 
