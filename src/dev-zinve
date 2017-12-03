@@ -4,17 +4,20 @@ setopt errexit
 setopt localtraps
 set -uo pipefail
 
-if [[ ${ZINVE__CONFIG__IS_PROD_BUNDLE:-""} != "1" ]]; then
-    if [[ -z ${ZINVE__LOADER_FPATH+x} ]]; then
-        ZINVE__LOADER_FPATH=${0:A:h}/lib-loader.zsh
-    fi
-    if [[ -e ${ZINVE__LOADER_FPATH} ]]; then
-        . ${ZINVE__LOADER_FPATH}
-        zinve::loader::load-all-libs ;
+_dev-zinve-source() {
+    if [[ -e ${1} ]]; then
+        echo "sourcing '$1'" >&2 ;
+        . ${1}
     else
-        echo "ERROR: SOURCE TARGET '$ZINVE__LOADER_FPATH' NOT FOUND!" >&2 ;
+        echo "ERROR: SOURCE TARGET '$1' NOT FOUND!" >&2 ;
         exit 1 ;
     fi
+}
+
+if [[ ${ZINVE__CONFIG__IS_PROD_BUNDLE:-""} != "1" ]]; then
+    _dev-zinve-source ${0:A:h}/misc/dev-prelude.zsh
+    _dev-zinve-source ${0:A:h}/lib-loader.zsh
+    zinve::loader::load-all-libs ;
 fi
 
 zinve-main-dispatch $@

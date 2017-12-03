@@ -9,15 +9,13 @@ zinve::die-impl() {
 
 _ZINVE__LOADER_SCRIPT_FPATH=${0:A}
 
-if [[ -z ${ZINVE__CONFIG__IS_PROD_BUNDLE+x} ]]; then
-    _loader_tmp_is_bundle="1"
-    if [[ ${_ZINVE__LOADER_SCRIPT_FPATH:t} == "lib-loader.zsh" ]]; then
-        _loader_tmp_is_bundle=""
-    fi
-    ZINVE__CONFIG__IS_PROD_BUNDLE=${_loader_tmp_is_bundle}
-    unset _loader_tmp_is_bundle
-fi
-export ZINVE__CONFIG__IS_PROD_BUNDLE
+zinve::config::build-type::is-prod() {
+    [[ ${ZINVE__CONFIG__IS_PROD_BUNDLE:-""} == "1" ]] || return 1 ;
+}
+
+zinve::config::build-type::is-dev() {
+    if zinve::config::build-type::is-prod; then return 1; fi
+}
 
 _zinve::loader::fatal-fallback() {
     local err_origin='loader.zsh'
@@ -81,7 +79,7 @@ function zinve::loader::source-dir() {
 }
 
 function zinve::loader::load-all-libs() {
-    if [ "${ZINVE__CONFIG__IS_PROD_BUNDLE:-""}" != "1" ]; then
+    if zinve::config::build-type::is-dev; then
         zinve::loader::source-dir ${_ZINVE__LOADER_SCRIPT_FPATH:h}/lib
     fi
 }

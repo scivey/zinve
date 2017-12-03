@@ -6,6 +6,7 @@ import os
 import sys
 import errno
 import functools
+import subprocess
 from contextlib import contextmanager
 
 PY3 = sys.version_info[0] >= 3
@@ -43,9 +44,9 @@ def open_write(fpath):
 
 
 @contextmanager
-def _bundler_for_fpath(fpath):
+def _bundler_for_fpath(fpath, vars=None):
     with open(fpath, 'w') as fout:
-        bundler = Bundler(fout)
+        bundler = Bundler(fout, vars=vars)
         yield bundler
         fout.flush()
 
@@ -65,23 +66,32 @@ def ensure_input_fileobj(maybe_file):
 
 class Bundler(object):
 
-    def __init__(self, out_fobj):
+    def __init__(self, out_fobj, vars=None):
         self._out_fobj = out_fobj
+        self._vars = vars or {}
 
+    def _expand(self, text):
+        for key, val in self.vars.items():
+            if key in text:
+                text = text.replace(key, val)
+        return text
     def add_part(self, in_fobj, skip_shebang=True):
         with ensure_input_fileobj(in_fobj) as ensured:
             line1 = ensured.readline()
             if not line1.startswith('#!') or not skip_shebang:
-                self._out_fobj.writelines([line1])
-            self._out_fobj.writelines(ensured.readlines())
+                self._out_fobj.writelines([self._expand(line1)])
+            self._out_fobj.write(self._expand(ensured.read()))
 
     def add_body_part(self, in_fobj):
-        self.add_part(in_fobj,skip_shebang=True)
+        self.add_part(in_fobj, skip_shebang=True)
 
     @classmethod
-    def for_path(cls, out_fpath):
-        return _bundler_for_fpath(out_fpath)
+    def for_path(cls, out_fpath, vars=None):
+        return _bundler_for_fpath(out_fpath, vars=vars)
 
+    @property
+    def vars(self):
+        return self._vars
 
 
 def path_func(func):
@@ -135,6 +145,32 @@ def say(fmt, *args):
     print('[ %s ] INFO - %s' % (SCRIPT_BASENAME, msg), file=sys.stderr)
 
 
+def run(cmd_args, **flags):
+    defaults = {
+        'shell': False,
+        'check': True
+    }
+    popen_kwargs = defaults
+    popen_kwargs.update(flags)
+    return subprocess.run(cmd_args, **popen_kwargs)
+
+def git(*args):
+    cmd = ['git'] + list(args)
+    return run(cmd, stdout=subprocess.PIPE, encoding='utf8').stdout
+
+def git_describe(match=None):
+    args = ['describe', '--always']
+    if match:
+        args.append('--match=%s' % (match,))
+    args.extend(['--abbrev=40', '--dirty'])
+    return git(*args)
+
+def load_vars():
+    rev = git_describe(match='neverMatchThis')
+    version = git_describe()
+    keys = {'VERSION_STR': version, 'GIT_REVISION': rev}
+    return {('@@ZINVE_%s@@' % (k,)) : v for k, v in keys.items()}
+
 def main():
     fdest = in_build_dir('bin', 'zinve')
     say("destination: %r", fdest)
@@ -147,8 +183,8 @@ def main():
     ]))
     sources.extend(ls_dir(in_src_dir('lib')))
     sources.append(in_src_dir('misc/bundle-run-main.zsh'))
-
-    with Bundler.for_path(fdest) as bundler:
+    vars = load_vars()
+    with Bundler.for_path(fdest, vars=vars) as bundler:
         src_iter = iter(sources)
         log1 = lambda x: say("adding part: %r", x)
         part_src = next(src_iter)
