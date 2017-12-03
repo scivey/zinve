@@ -23,6 +23,9 @@ zinve::make-fs-cache-key() {
     local bad_pat='[/.}{?\!]'
     echo ${1//${~bad_pat}/_}
 }
+# zinve::venv::ensure-venv-by-path() {
+#     local venv_d=$1 pybin=$2 ; shift 2;
+# }
 
 zinve::venv::ensure-named-venv() {
     local name=$1 ; shift ;
@@ -35,7 +38,7 @@ zinve::venv::ensure-named-venv() {
     typeset -A hash_path_to_digest; hash_path_to_digest=() ;
     if [[ ! -d $venv_d ]]; then
         mkdir -p ${venv_d:h} ;
-        virtualenv -p ${ZINVE__PARAM__TARGET_PYTHON_BIN} $venv_d ;
+        virtualenv -p ${pybin} $venv_d ;
         ${venv_d}/bin/pip install --upgrade pip
         upit=true
     fi
