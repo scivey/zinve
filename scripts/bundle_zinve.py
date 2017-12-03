@@ -156,7 +156,7 @@ def run(cmd_args, **flags):
 
 def git(*args):
     cmd = ['git'] + list(args)
-    return run(cmd, stdout=subprocess.PIPE, encoding='utf8').stdout
+    return run(cmd, stdout=subprocess.PIPE, encoding='utf8').stdout.strip()
 
 def git_describe(match=None):
     args = ['describe', '--always']

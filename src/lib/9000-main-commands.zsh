@@ -22,30 +22,40 @@ zinve-main-cmd::debug() {
 }
 
 _zinve-main-helper::version-info() {
-    printf ' Version: %s\n' "$ZINVE__CONST__VERSION_STR"
-    printf 'Revision: %s\n' "$ZINVE__CONST__GIT_REVISION"
+    printf 'version=%s\n' "$ZINVE__CONST__VERSION_STR"
+    printf 'revision=%s\n' "$ZINVE__CONST__GIT_REVISION"
 }
 _zinve-main-helper::list-commands() {
     local pfx='^zinve-main-cmd::'
     functions + \
         | sed -rn '/'$pfx'/ p' \
-        | sed -r 's/'$pfx'//'
+        | sed -r 's/'$pfx'//' \
+        | grep -Ev '^debug'
+}
+_zinve-main-helper::show-usage-1() {
+    echo "Usage: zinve \$COMMAND \$COMMAND_ARG1 ... \$COMMAND_ARGN" ;
+}
+_zinve-main-helper::show-usage-2() {
+    echo "Commands: " ;
+    _zinve-main-helper::list-commands | sed -r 's/^/        /' ;
 }
 _zinve-main-helper::show-usage() {
-    echo "Usage: zinve \$COMMAND \$COMMAND_ARG1 ... \$COMMAND_ARGN" ;
+    _zinve-main-helper::show-usage-1 ;
     printf '\n' ;
-    echo "Commands: " ;
-    _zinve-main-helper::list-commands | sed -r 's/^/      - /' ;
-    printf -- '\n----\n\n' ;
+    _zinve-main-helper::show-usage-2 ;
+    printf '\n\n' ;
+
 }
 
 zinve-main-cmd::help() {
-    printf 'zinve\n\n' ;
-    _zinve-main-helper::version-info ;
-    printf '\n' ;
+    local vstr="$ZINVE__CONST__VERSION_STR"
+    printf 'zinve-%s\n\n' $vstr ;
     _zinve-main-helper::show-usage ;
+    printf '\n' ;
 }
-
+zinve-main-cmd::version() {
+    _zinve-main-helper::version-info ;
+}
 _zinve-error::unknown-command() {
     _zinve-main-helper::show-usage >&2 ;
     [[ $# -gt 0 ]] || _zinve-error::no-command ;
@@ -70,6 +80,12 @@ zinve-main-dispatch() {
     local base_d=""
     typeset -a req_files=()
     local curr ;
+    if [[ $# -eq 1 ]] && [[ $1 == '-'* ]]; then
+        case $1 in
+            -h | --help ) { cmdname='help' ; shift ; } ;;
+            -v | --version) { cmdname='version' ; shift ; } ;;
+        esac
+    fi
     while [[ $# -gt 0 ]]; do
         curr=$1 ; shift ;
         if [[ $curr == '--' ]]; then
