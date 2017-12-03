@@ -171,6 +171,19 @@ def load_vars():
     keys = {'VERSION_STR': version, 'GIT_REVISION': rev}
     return {('@@ZINVE_%s@@' % (k,)) : v for k, v in keys.items()}
 
+def sort_by_basename(fnames):
+    out = list(fnames)
+    def _keyfn(val):
+        base = os.path.basename(val)
+        parts = [part for part in base.split('-') if part.isdecimal()]
+        if not parts:
+            return 0
+        return int(''.join(parts))
+
+    out.sort(key=_keyfn)
+    return out
+
+
 def main():
     fdest = in_build_dir('bin', 'zinve')
     say("destination: %r", fdest)
@@ -181,7 +194,7 @@ def main():
         'misc/bundle-prelude.zsh',
         'lib-loader.zsh'
     ]))
-    sources.extend(ls_dir(in_src_dir('lib')))
+    sources.extend(sort_by_basename(ls_dir(in_src_dir('lib'))))
     sources.append(in_src_dir('misc/bundle-run-main.zsh'))
     vars = load_vars()
     with Bundler.for_path(fdest, vars=vars) as bundler:
