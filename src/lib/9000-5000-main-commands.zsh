@@ -23,12 +23,11 @@ zinve-main-cmd::debug() {
 zinve-main-cmd::help() {
     local vstr="$ZINVE__CONST__VERSION_STR"
     printf 'zinve-%s\n\n' $vstr ;
-    _zinve-main-helper::show-usage ;
-    printf '\n' ;
+    zinve-main-helper::show-usage ;
 }
 
 zinve-main-cmd::version() {
-    _zinve-main-helper::version-info ;
+    zinve-main-helper::version-info
 }
 
 zinve-main-dispatch() {
