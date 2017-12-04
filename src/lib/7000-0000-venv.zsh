@@ -69,7 +69,7 @@ zinve::venv::ensure-by-path() {
         fi
     fi
     for digf digv in ${(kv)output_digests}; do
-        local tempf="${dig_temp_d}/${digf:t}.tmp~"
+        local tempf="${dig_tmp_d}/${digf:t}.tmp~"
         rm -f $tempf ; echo $digv > $tempf ;
         mv -f $tempf $digf ;
     done
