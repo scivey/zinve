@@ -1,0 +1,12 @@
+#!/usr/bin/env zsh
+
+set -euo pipefail
+
+ROOT_D=${0:A:h:h}
+BIN_PATH=${ROOT_D}/build/bin/zinve
+
+pushd $ROOT_D > /dev/null ;
+make ;
+popd > /dev/null ;
+exec ${BIN_PATH} $@
+
