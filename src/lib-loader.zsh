@@ -7,6 +7,19 @@ zinve::die-impl() {
     return 1 ;
 }
 
+if [[ -z ${ZINVE__PERFLOG+x} ]]; then
+    zinve::perfstamp() { true ; }
+else
+    zmodload zsh/datetime
+    integer zinve_perf_fd=0
+    mkdir -p ${ZINVE__PERFLOG:h}
+    rm -f ${ZINVE__PERFLOG}
+    exec {zinve_perf_fd}>$ZINVE__PERFLOG
+    zinve::perfstamp() { echo "${1}=${EPOCHREALTIME}" >&$zinve_perf_fd ; }
+fi
+
+zinve::perfstamp "START"
+
 _ZINVE__LOADER_SCRIPT_FPATH=${0:A}
 
 zinve::config::build-type::is-prod() {

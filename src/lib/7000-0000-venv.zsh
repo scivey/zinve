@@ -271,6 +271,7 @@ _zinve::venv::run-or-exec-in-venv() {
     typeset -a fin_call=( $bin_fpath )
     [[ ${#cmd_parts} -lt 1 ]] || fin_call+=( ${cmd_parts[@]} ) ;
 
+    zinve::perfstamp "END"
     case $zinve_cmd_name in
         CMD_EXEC) { exec ${fin_call[@]} ; } ;;
         CMD_RUN) { ${fin_call[@]} ; return ; } ;;
