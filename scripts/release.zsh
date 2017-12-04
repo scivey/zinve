@@ -19,7 +19,7 @@ __runit() {
         echo "ERROR: repo is dirty." >&2 ; return 1 ;
     fi
     typeset -a tag_list=()
-    zparseopts -DE t:=tag_list -tag:=tag_list ;
+    zparseopts -D -E t:=tag_list -tag:=tag_list ;
     if [[ ${#tag_list} -lt 2 ]]; then
         echo "Specify a tag (-t / --tag)." >&2 ;
         return 1 ;
@@ -37,9 +37,8 @@ __runit() {
     ds-gh-release upload -r $REPO \
         --name $ARTIFACT_NAME \
         -f $ARTIFACT_PATH \
-        -l "amalgamation as of $tag" \
+        -l $ARTIFACT_NAME \
         -t "$tag" ;
-
 }
 
 __runit $@
