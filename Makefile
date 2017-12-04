@@ -1,9 +1,16 @@
 
-.PHONY: zinve-bundle
+.PHONY: zinve-bundle clean dist
 
-zinve-bundle:
+DEFAULT: dist
+
+clean:
 	rm -rf build
-	./scripts/bundle_zinve.py
+
+dist: zinve-bundle
+
+zinve-bundle: clean
+	mkdir -p build/bin
+	./scripts/bundle_zinve.py -o build/bin/zinve
 
 install: zinve-bundle
 	rm -rf tmp/phone && mkdir -p tmp/phony

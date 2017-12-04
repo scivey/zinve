@@ -7,6 +7,7 @@ import sys
 import errno
 import functools
 import subprocess
+import argparse
 from contextlib import contextmanager
 
 PY3 = sys.version_info[0] >= 3
@@ -49,6 +50,9 @@ def _bundler_for_fpath(fpath, vars=None):
         bundler = Bundler(fout, vars=vars)
         yield bundler
         fout.flush()
+
+
+
 
 
 @contextmanager
@@ -119,11 +123,6 @@ def in_src_dir():
     return in_root_dir('src')
 
 
-@path_func
-def in_build_dir():
-    return in_root_dir('build')
-
-
 def mkdir_p(dpath):
     try:
         os.makedirs(dpath)
@@ -184,30 +183,49 @@ def sort_by_basename(fnames):
     return out
 
 
-def main():
-    fdest = in_build_dir('bin', 'zinve')
-    say("destination: %r", fdest)
-    mkdir_p(os.path.dirname(fdest))
-    if os.path.exists(fdest):
-        os.unlink(fdest)
+def get_sources():
     sources = list(map(in_src_dir, [
         'misc/bundle-prelude.zsh',
         'lib-loader.zsh'
     ]))
     sources.extend(sort_by_basename(ls_dir(in_src_dir('lib'))))
     sources.append(in_src_dir('misc/bundle-run-main.zsh'))
+    return sources
+
+def make_bundle(options):
+
+    def _verb(fmt, *args):
+        if options.verbose:
+            say(fmt, *args)
+
+    def _log1(part):
+        _verb("adding part: %r", part)
+
+    fdest = os.path.realpath(options.output)
+    _verb("destination: %r", fdest)
+
+    mkdir_p(os.path.dirname(fdest))
+    if os.path.exists(fdest):
+        os.unlink(fdest)
     vars = load_vars()
     with Bundler.for_path(fdest, vars=vars) as bundler:
-        src_iter = iter(sources)
-        log1 = lambda x: say("adding part: %r", x)
+        src_iter = iter(get_sources())
         part_src = next(src_iter)
-        log1(part_src)
+        _log1(part_src)
         bundler.add_part(part_src, skip_shebang=False)
         for part_src in src_iter:
-            log1(part_src)
+            _log1(part_src)
             bundler.add_body_part(part_src)
     os.chmod(fdest, 0o755)
+    say(" -> %s", fdest)
 
+
+def main():
+    parser = argparse.ArgumentParser(os.path.basename(__file__))
+    parser.add_argument('-v', '--verbose', action='store_true', default=False)
+    parser.add_argument('-o', '--output', required=True)
+    opts = parser.parse_args()
+    make_bundle(opts)
 
 if __name__ == '__main__':
     main()
