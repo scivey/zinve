@@ -7,23 +7,144 @@ zinve::make-fs-cache-key() {
     local bad_pat='[/.}{?\!]'
     echo ${1//${~bad_pat}/_}
 }
+zinve::try-rmdir() {
+    if ! rmdir $1 &>/dev/null; then return 1; fi
+}
+
+_zinve::venv::find-py-bins() {
+    local dname=$1 ; shift ;
+    find $dname \( -type f -o -type l \) -a -name 'python*' -printf '%P\n' \
+        | sed -rn '/^python[0-9]/ p'
+}
+
+_zinve::version-str::has-minor() {
+    [[ ${1// /} =~ ^[0-9]+.[0-9]+ ]] || return 1
+}
+
+_zinve::venv::get-version-from-bin-dir() {
+    local curr="";
+    local bin_dir=$1 ;
+    [[ -d $bin_dir ]] || zinve::fatal "'$bin_dir' is not a directory" ;
+    local vstr=""
+    while read -r curr ; do
+        if _zinve::version-str::has-minor $curr ; then
+            vstr=$curr ; break ;
+        elif [[ $vstr == "" ]]; then
+            vstr=$curr ;
+        fi
+    done < <( _zinve::venv::find-py-bins $bin_d | sed -r 's/python//' )
+    if [[ $vstr == "" ]] ; then
+        zinve::warn "couldn't determine python version in ${bin_d}"
+        return 1 ;
+    fi
+    echo $vstr ;
+}
+
+_zinve::venv::find-wanted-python-version() {
+    local pybin=$1 ; shift ;
+    local pybase=${pybin:t}
+    if [[ $pybase != python* ]]; then
+        zinve::fatal "$0 - don't know what to do with '$pybase' ('$pybin')"
+    fi
+    if [[ $pybase =~ ^python[0-9].* ]]; then
+        echo ${pybase##python}
+    else
+        local bin_d=""
+        if [[ ${pybin} == '/'* ]]; then
+            bin_d=$pybin
+        else
+            read -r bin_d < <( whence -p $pybase ) ;
+            bin_d=${bin_d:h}
+        fi
+        _zinve::venv::get-version-from-bin-dir $bin_d ;
+    fi
+}
 
 zinve::venv::ensure-by-path() {
     typeset -A optmap
     typeset -a reqs=()
     typeset -a adef=()
-    zparseopts -a adef -A optmap r+:=reqs p: -python: d: -venv-dir:
+    zparseopts -a adef -A optmap r+:=reqs \
+            p: -python: d: -venv-dir: \
+            f -force
+
     local venv_d=""
     read -r venv_d < <( zinve::key-coalesce optmap '-d' '--venv-dir' )
     local pybin=""
     if ! read -r pybin < <( zinve::key-coalesce optmap '-p' '--python' ); then
         pybin='python'
     fi
+    local is_force=false ;
     typeset -a bad_elems=( '-r' )
     reqs=( ${reqs:|bad_elems} )
     local venv_z_state_d=$venv_d/.zinve
     local upit=false
-    if [[ ! -d $venv_d ]]; then
+    local bin_d=$venv_d/bin
+    local msg=""
+    if [[ -d $venv_d ]]; then
+        if [[ -d $bin_d ]]; then
+            local wanted_v="" ;
+            read -r wanted_v < <( {
+                _zinve::venv::find-wanted-python-version $pybin
+            } )
+            local current_v=""
+            read -r current_v < <( {
+                _zinve::venv::get-version-from-bin-dir $bin_d
+            } )
+            local vmatch=true ;
+            if [[ $wanted_v == *'.'* ]]; then
+                if [[ $wanted_v != $current_v ]]; then
+                    vmatch=false ;
+                fi
+            else
+                if [[ $current_v != "$wanted_v"* ]]; then
+                    vmatch=false
+                fi
+            fi
+            if ( $vmatch ); then
+                zinve::info "versions match : '$current_v' == '$wanted_v'"
+            else
+                msg="python version '$current_v' in '$venv_d' does not"
+                msg+=" match target version '$wanted_v'."
+                vinve::warn $msg ;
+                msg=""
+                if ( $is_force ); then
+                    msg="Because --force is enabled, I'm killing $venv_d"
+                    msg+=" and rebuilding."
+                    zinve::warn $msg ;
+                    rm -rf $venv_d ;
+                    zinve::warn "( removed $venv_d )"
+                else
+                    msg="Aborting. If you want me to rebuild $venv_d with"
+                    msg+=" version '$wanted_v', pass the --force flag."
+                    zinve::fatal "$msg" ; return 1 ;
+                fi
+            fi
+        else
+            zinve::warn "'$venv_d' doesn't seem to be a valid virtualenv."
+            if zinve::try-rmdir $venv_d ; then
+                msg="Target '$venv_d' existed but wasn't a virtualenv."
+                msg+=" It was empty, so I removed it."
+                zinve::warn $msg ;
+            else
+                if ( $is_force ); then
+                    msg="Existing target '$venv_d' is invalid and --force"
+                    msg+=" is enabled: removing '$venv_d' and rebuilding."
+                    zinve::warn $msg ;
+                    rm -rf $venv_d ;
+                else
+                    msg="Target dir '$venv_d' exists and is non-empty, but it"
+                    msg+=" doesn't look like a virtualenv dir."
+                    msg+=" If you want me to fix it, pass --force."
+                    zinve::fatal $msg ; return 1 ;
+                fi
+            fi
+        fi
+    fi
+
+    if [[ -d $venv_d ]]; then
+        true
+    else
         mkdir -p ${venv_d:h} ;
         virtualenv -p ${pybin} $venv_d ;
         ${venv_d}/bin/pip install --upgrade pip
