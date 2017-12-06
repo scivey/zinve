@@ -66,6 +66,16 @@ _zinve::venv::find-wanted-python-version() {
         | sed -r 's/\..*//'
 }
 
+_zinve::venv::exec-in-venv-unchecked() {
+    local venv_dir=$1 ; shift ;
+    PATH="${venv_dir}/bin:${PATH}" VIRTUAL_ENV="$venv_dir" exec $@
+}
+
+_zinve::venv::run-in-venv-unchecked() {
+    local venv_dir=$1 ; shift ;
+    PATH="${venv_dir}/bin:${PATH}" VIRTUAL_ENV="$venv_dir" $@
+}
+
 zinve::venv::ensure-by-path() {
     typeset -a reqs=()
     typeset -a adef=()
@@ -130,7 +140,8 @@ zinve::venv::ensure-by-path() {
                 fi
             fi
             if ( $vmatch ); then
-                zinve::info "versions match : '$current_v' == '$wanted_v'"
+                true
+                # zinve::info "versions match : '$current_v' == '$wanted_v'"
             else
                 msg="python version '$current_v' in '$venv_d' does not"
                 msg+=" match target version '$wanted_v'."
@@ -174,7 +185,8 @@ zinve::venv::ensure-by-path() {
     if [[ ! -d $venv_d ]]; then
         mkdir -p ${venv_d:h} ;
         virtualenv -p ${pybin} $venv_d ;
-        ${venv_d}/bin/pip install --upgrade pip
+        _zinve::run-in-venv-unchecked $venv_d \
+            ${venv_d}/bin/pip install --upgrade pip
         upit=true
     fi
 
@@ -211,6 +223,7 @@ zinve::venv::ensure-by-path() {
 
     if [[ ${#needed_req_files} -gt 0 ]]; then
         typeset -a pip_call=(
+            _zinve::run-in-venv-unchecked $venv_d
             "$venv_d/bin/pip" install
         )
         for curr_reqf in ${needed_req_files[@]}; do
@@ -268,15 +281,22 @@ _zinve::venv::run-or-exec-in-venv() {
         return 1 ; # not reached
     fi
 
-    typeset -a fin_call=( $bin_fpath )
+
+
+    local runner=""
+    case $zinve_cmd_name in
+        CMD_RUN) runner='_zinve::venv::run-in-venv-unchecked' ;;
+        CMD_EXEC) runner='_zinve::venv::exec-in-venv-unchecked' ;;
+        *) { zinve::fatal "$0 invalid command '$cmd_name'" ; } ;;
+    esac
+
+    typeset -a fin_call=(
+        $runner $venv_d $bin_fpath
+    )
     [[ ${#cmd_parts} -lt 1 ]] || fin_call+=( ${cmd_parts[@]} ) ;
 
     zinve::perfstamp "END"
-    case $zinve_cmd_name in
-        CMD_EXEC) { exec ${fin_call[@]} ; } ;;
-        CMD_RUN) { ${fin_call[@]} ; return ; } ;;
-        *) { zinve::fatal "$0 invalid command '$cmd_name'" ; } ;;
-    esac
+    ${fin_call[@]}
 }
 
 
