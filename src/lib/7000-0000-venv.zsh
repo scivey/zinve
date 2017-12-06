@@ -185,7 +185,7 @@ zinve::venv::ensure-by-path() {
     if [[ ! -d $venv_d ]]; then
         mkdir -p ${venv_d:h} ;
         virtualenv -p ${pybin} $venv_d ;
-        _zinve::run-in-venv-unchecked $venv_d \
+        _zinve::venv::run-in-venv-unchecked $venv_d \
             ${venv_d}/bin/pip install --upgrade pip
         upit=true
     fi
@@ -223,7 +223,7 @@ zinve::venv::ensure-by-path() {
 
     if [[ ${#needed_req_files} -gt 0 ]]; then
         typeset -a pip_call=(
-            _zinve::run-in-venv-unchecked $venv_d
+            _zinve::venv::run-in-venv-unchecked $venv_d
             "$venv_d/bin/pip" install
         )
         for curr_reqf in ${needed_req_files[@]}; do
