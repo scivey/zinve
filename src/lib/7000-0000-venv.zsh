@@ -275,7 +275,9 @@ _zinve::venv::run-or-exec-in-venv() {
         cmd_parts[1]=() ;
     fi
 
-    bin_fpath=${bin_d}/${bin_name}
+    if [[ $bin_fpath != '/'* ]]; then
+        bin_fpath=${bin_d}/${bin_name}
+    fi
     if [[ ! -e $bin_fpath ]]; then
         zinve::fatal "Can't find '$bin_name'. Expected at path '$bin_fpath'" ;
         return 1 ; # not reached
