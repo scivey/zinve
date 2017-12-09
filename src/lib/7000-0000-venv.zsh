@@ -275,7 +275,9 @@ _zinve::venv::run-or-exec-in-venv() {
         cmd_parts[1]=() ;
     fi
 
-    if [[ $bin_fpath != '/'* ]]; then
+    if [[ $bin_name == '/'* ]]; then
+        bin_fpath=$bin_name ;
+    else
         bin_fpath=${bin_d}/${bin_name}
     fi
     if [[ ! -e $bin_fpath ]]; then
