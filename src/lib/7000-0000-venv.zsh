@@ -200,10 +200,10 @@ zinve::venv::ensure-by-path() {
     read -r dig_fn dig_suffix < <( zinve::digest::choose-fn-and-suffix )
     for curr_reqf in ${reqs[@]}; do
         curr_reqf=${curr_reqf:A}
-        local dig_key;
+        local dig_key="";
         read -r dig_key < <( zinve::make-fs-cache-key $curr_reqf ) ;
         local dig_f="${dig_d}/${dig_key}${dig_suffix}"
-        local curr_dig; read -r curr_dig < <( $dig_fn $curr_reqf )
+        local curr_dig=""; read -r curr_dig < <( $dig_fn $curr_reqf )
         curr_dig="${curr_dig// /}"
         local prev_dig=""
         if [[ -e $dig_f ]]; then
