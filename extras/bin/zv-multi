@@ -77,7 +77,7 @@ _zv-multi::ls-venv-reqs() {
         _dyfup "dir '$all_reqs_d' doesn't define any requirements for '$name'"
     fi
 }
-_zv-multi::get-venv-interpreter() {
+_zv-multi::get-implicit-venv-interpreter() {
     local name=$1 ; shift ;
     local all_reqs_d="" ;
     if ! read -r all_reqs_d < <( _get-lightly-checked-base-reqs-dir ) ; then
@@ -240,10 +240,15 @@ fi
 if [[ -z ${_ZVMULTI__DEFAULT_X2_INTERPRETER+x} ]]; then
     typeset -gx _ZVMULTI__DEFAULT_X2_INTERPRETER="python3"
 fi
+export ZVMULTI__DEFAULT_X2_INTERPRETER
 if [[ -z ${ZVMULTI__DEFAULT_INTERPRETER+x} ]]; then
     typeset -gx ZVMULTI__DEFAULT_INTERPRETER=""
 fi
-
+export ZVMULTI__DEFAULT_INTERPRETER
+if [[ -z ${ZVMULTI__INTERPRETER+x} ]]; then
+    typeset -gx ZVMULTI__INTERPRETER=""
+fi
+export ZVMULTI__INTERPRETER
 
 if [[ -z ${ZVMULTI__AUTO_WORKDIR+x} ]]; then
     typeset -gx ZVMULTI__AUTO_WORKDIR="${__UNSET}"
