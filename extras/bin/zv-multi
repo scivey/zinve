@@ -32,23 +32,40 @@ _real-or-link() {
     [[ -f $1 ]] || [[ -L $1 ]] || return 1 ;
 }
 
-_zv-multi::ls-venv-reqs() {
-    local name=$1 ; shift ;
-    local all_reqs_d="${ZVMULTI__REQS_ROOT_D}"
+_exists() { [[ -e $1 ]] || return 1 ; }
 
-    if [[ ! -e ${all_reqs_d} ]]; then
+_sanity-check-base-reqs-dir() {
+    # a non-existent base dir is considered sane !!
+    local all_reqs_d="${1}"
+    if ! _exists ${all_reqs_d} ; then
         _dyfup "Base requirements dir '$all_reqs_d' doesn't exist."
         return
-    elif [[ ! -d ${all_reqs_d} ]]; then
-        local emsg="Base reqs dir location '$all_reqs_d'"
-        emsg+=" exists, but is not a directory.  Abort.ing"
-        ds-zl::fatal $emsg ;
     fi
+    [[ ! -d ${all_reqs_d} ]] || return 0 ;
+    ds-zl::fatal "Base reqs dir location '$all_reqs_d' exists, but is" \
+                    "not a directory.  Aborting."
+    exit 1 ; # not reached
+}
+_get-lightly-checked-base-reqs-dir() {
+    local all_reqs_d="${ZVMULTI__REQS_ROOT_D}"
+    _sanity-check-base-reqs-dir $all_reqs_d ;
+    echo $all_reqs_d ;
+}
+
+_zv-multi::ls-venv-reqs() {
+    local name=$1 ; shift ;
+    local all_reqs_d="" ;
+    if ! read -r all_reqs_d < <( _get-lightly-checked-base-reqs-dir ) ; then
+        ds-zl::fatal "$0 propagate" ;
+        exit 1 ; # not reached
+    fi
+    _exists ${all_reqs_d} || return 0 ;
 
     local f_or_dir="" ;
     f_or_dir="${all_reqs_d}/${name}"
     if [[ -d $f_or_dir ]]; then
         find -L $f_or_dir -maxdepth 10 -type f \
+            | sed -rn '/[^\._]/ p' \
             | xargs --no-run-if-empty realpath \
             | sort -u
     elif _real-or-link $f_or_dir ; then
@@ -60,7 +77,18 @@ _zv-multi::ls-venv-reqs() {
         _dyfup "dir '$all_reqs_d' doesn't define any requirements for '$name'"
     fi
 }
-
+_zv-multi::get-venv-interpreter() {
+    local name=$1 ; shift ;
+    local all_reqs_d="" ;
+    if ! read -r all_reqs_d < <( _get-lightly-checked-base-reqs-dir ) ; then
+        ds-zl::fatal "$0 propagate" ;
+        exit 1 ; # not reached
+    fi
+    local -a fstack ; fstack+=(
+        ${all_reqs_d}/${name}/.python-version
+        ${all_reqs_d}/.python-version
+    )
+}
 _zvm-is-debug() {
     [[ ${ZVMULTI__DEBUG:-""} == "1" ]] || return 1 ;
 }
@@ -173,9 +201,49 @@ if [[ -z ${ZVMULTI__VENVS_ROOT_D+x} ]]; then
     typeset -gx ZVMULTI__VENVS_ROOT_D="${__UNSET}"
 fi
 
-if [[ -z ${ZVMULTI__DEFAULT_INTERPRETER+x} ]]; then
-    typeset -gx ZVMULTI__DEFAULT_INTERPRETER="python3"
+# explanation:
+# * `_ZVMULTI__DEFAULT_X2_INTERPRETER` is "private", whatever that
+#   means to you, and is our *actual* default.
+# * `ZVMULTI__DEFAULT_INTERPRETER` is likewise "public": we expect
+#   the user to fuck with it.
+# * The redundancy helps clear up potential ambiguity as to what
+#   the user has specified. If we only had one variable, and if the
+#   user happened to specify the same default as our own -- e.g.
+#   'python3' -- we would end in the same state as if the user hadn't
+#   specified anything.
+# * We need this information because trust me, we do. We need it in order to
+#   not fuck up options / settings / config / whatever you want to call it.
+#   A large part of getting this "right" is simple data provenance, just
+#   on a much smaller scale than we usually talk about.
+# * When we get to the end of introductions and option parsing and all that,
+#   and we're about to take some (potentially destructive) action, we should
+#   know exactly how any individual setting came to have its current value.
+#   For our purposes here, "setting" means: any parameter that influences
+#   what action we ultimately take, with a granularity appropriate for
+#   command-line flags.
+# * These things can get their option in many ways: config file; env var;
+#   CLI flag; user-configurable default; private/internal default... It's a
+#   long list, and each case can have a surprising number of details /
+#   edge cases / expectations / etc. associated.
+#   More broadly, notice that this list only mentions fairly explicit cases.
+#   In each type, it's easy to imagine a source of "truth" that could
+#   realistically answer the question at hand.
+# * Most real applications veer into a fuzzier, more implicit
+#   world. Here, default values are determined by pulling them out of our
+#   asses and hoping for the best. There are more polite euphemisms:
+#   "Heuristics." "Do what I mean." "Smart defaults." They boil down
+#   to trying to be clever, trying to do what the user wants without forcing
+#   them to spell it out.
+#   This is often very necessary. Side note: less often, but
+#   still quite commonly, all of this goes very badly.
+#
+if [[ -z ${_ZVMULTI__DEFAULT_X2_INTERPRETER+x} ]]; then
+    typeset -gx _ZVMULTI__DEFAULT_X2_INTERPRETER="python3"
 fi
+if [[ -z ${ZVMULTI__DEFAULT_INTERPRETER+x} ]]; then
+    typeset -gx ZVMULTI__DEFAULT_INTERPRETER=""
+fi
+
 
 if [[ -z ${ZVMULTI__AUTO_WORKDIR+x} ]]; then
     typeset -gx ZVMULTI__AUTO_WORKDIR="${__UNSET}"
@@ -323,7 +391,7 @@ function zv-multi-cmd::exec () {
     local -a czv_args; czv_args=() ;
 
     local curr="" ;
-    while [[ $1 != '--' ]]; do
+    while [[ $# -gt 0 ]] && [[ $1 != '--' ]]; do
         curr=$1 ; shift ;
         czv_args+=( $curr )
     done
