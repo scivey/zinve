@@ -1,0 +1,80 @@
+#!/usr/bin/env zsh
+#
+set -euo pipefail
+. ds-zshlib-core
+
+if [[ -z ${__UNSET+x} ]]; then
+    typeset -rgx __UNSET="__UNSET__"
+fi
+if [[ -z ${ZVVIM__ZV_MULTI_BIN+x} ]]; then
+    typeset -rg ZVVIM__ZV_MULTI_BIN="${__UNSET}"
+fi
+
+typeset -rgx ZVVIM__SELF_PATH=${0:A}
+_find-zv-multi() {
+    local zmb="" ; zmb=${ZVVIM__ZV_MULTI_BIN}
+    if [[ $zmb != ${__UNSET} ]]; then
+        echo $zmb ; return ;
+    fi
+    local basen='zv-multi'
+    zmb="${ZVVIM__SELF_PATH:h}/$basen"
+    if [[ -e $zmb ]]; then
+        echo $zmb ; return ;
+    fi
+    zmb="" ;
+    if read -r zmb < <( whence -p $basen 2>/dev/null ) ; then
+        echo $zmb ; return ;
+    fi
+    ds-zl::fatal "Couldn't find zv-multi."
+
+}
+_find-vim() {
+    local -a to_try ; to_try=() ;
+    to_try+=(
+        'nvim' 'vim' 'vi'
+    )
+    local vibin="" curr="" ;
+    for curr in ${to_try[@]} ; do
+        vibin=""
+        if read -r vibin < <( whence -p ${curr} 2>/dev/null ) ; then
+            echo ${vibin:A} ; return ;
+        fi
+    done
+    local emsg="I can't find anything vim-like on \$PATH."
+    emsg+=" I looked for: ${(j:, :)${(@qq)to_try}}."
+    ds-zl::fatal $emsg ;
+    exit 1 ; # not reached
+}
+
+
+() {
+    local -a user_args ; user_args=() ;
+    local -a mzv_args ; mzv_args=() ;
+    local curr="" ;
+    while [[ $# -gt 0 ]] && [[ $1 != '--' ]]; do
+        curr=$1 ; shift ;
+        mzv_args+=( $curr ) ;
+    done
+    if [[ $# -gt 0 ]]; then
+        if [[ $1 == '--' ]]; then
+            shift ;
+            user_args+=( $@ ) ;
+            shift $#
+        else
+            ds-zl::fatal "Unexpected args: '$*'"
+            exit 1 ; # not reached
+        fi
+    fi
+    local zmb_p="" ;
+    read -r zmb_p < <( _find-zv-multi ) || exit 1 ;
+    local vimb_p="" ;
+    read -r vimb_p < <( _find-vim ) || exit 1 ;
+
+    local -a to_run ; to_run=() ;
+    to_run+=( "${vimb_p:A}" )
+    if [[ ${#user_args} -gt 0 ]]; then
+        to_run+=( '-p' ${user_args[@]} ) ;
+    fi
+    exec ${zmb_p} 'exec' ${mzv_args[@]} -- ${to_run[@]}
+} $@
+
