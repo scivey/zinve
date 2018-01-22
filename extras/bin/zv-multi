@@ -1,0 +1,465 @@
+#!/usr/bin/env zsh
+
+set -euo pipefail
+
+. ds-zshlib-core
+. ds-zshlib-cmder
+. ds-zshlib-pprint
+
+function pushd() { builtin pushd $@ > /dev/null ; }
+function popd() { builtin popd $@ > /dev/null ; }
+
+typeset -rgx ZVMULTI__SELF_PATH=${0:A}
+typeset -rgx ZVMULTI__BASEN=${ZVMULTI__SELF_PATH:t}
+
+_zv-multi::did-you-fuckup() {
+    local emsg=""
+    if [[ $# -eq 1 ]]; then
+        emsg=$1 ;
+    else
+        emsg="$*"
+    fi
+    if [[ ${emsg[-1]} != '.' ]]; then
+        emsg="${emsg}."
+    fi
+    ds-zl::warn "${emsg}  Is this intentional?"
+    ds-zl::warn "It's technically valid, so I'm going to use it."
+}
+_dyfup() { _zv-multi::did-you-fuckup $@ ; }
+
+
+_real-or-link() {
+    [[ -f $1 ]] || [[ -L $1 ]] || return 1 ;
+}
+
+_exists() { [[ -e $1 ]] || return 1 ; }
+
+_sanity-check-base-reqs-dir() {
+    # a non-existent base dir is considered sane !!
+    local all_reqs_d="${1}"
+    if ! _exists ${all_reqs_d} ; then
+        _dyfup "Base requirements dir '$all_reqs_d' doesn't exist."
+        return
+    fi
+    [[ ! -d ${all_reqs_d} ]] || return 0 ;
+    ds-zl::fatal "Base reqs dir location '$all_reqs_d' exists, but is" \
+                    "not a directory.  Aborting."
+    exit 1 ; # not reached
+}
+_get-lightly-checked-base-reqs-dir() {
+    local all_reqs_d="${ZVMULTI__REQS_ROOT_D}"
+    _sanity-check-base-reqs-dir $all_reqs_d ;
+    echo $all_reqs_d ;
+}
+
+_zv-multi::ls-venv-reqs() {
+    local name=$1 ; shift ;
+    local all_reqs_d="" ;
+    if ! read -r all_reqs_d < <( _get-lightly-checked-base-reqs-dir ) ; then
+        ds-zl::fatal "$0 propagate" ;
+        exit 1 ; # not reached
+    fi
+    _exists ${all_reqs_d} || return 0 ;
+
+    local f_or_dir="" ;
+    f_or_dir="${all_reqs_d}/${name}"
+    if [[ -d $f_or_dir ]]; then
+        find -L $f_or_dir -maxdepth 10 -type f \
+            | sed -rn '/[^\._]/ p' \
+            | xargs --no-run-if-empty realpath \
+            | sort -u
+    elif _real-or-link $f_or_dir ; then
+        realpath $f_or_dir
+    elif _real-or-link "${f_or_dir}.txt" ; then
+        realpath "${f_or_dir}.txt"
+    else
+        # not considered an error condition
+        _dyfup "dir '$all_reqs_d' doesn't define any requirements for '$name'"
+    fi
+}
+_zv-multi::get-implicit-venv-interpreter() {
+    local name=$1 ; shift ;
+    local all_reqs_d="" ;
+    if ! read -r all_reqs_d < <( _get-lightly-checked-base-reqs-dir ) ; then
+        ds-zl::fatal "$0 propagate" ;
+        exit 1 ; # not reached
+    fi
+    local -a fstack ; fstack+=(
+        ${all_reqs_d}/${name}/.python-version
+        ${all_reqs_d}/.python-version
+    )
+}
+_zvm-is-debug() {
+    [[ ${ZVMULTI__DEBUG:-""} == "1" ]] || return 1 ;
+}
+_zvm-debug-args() {
+    _zvm-is-debug || return 0;
+    local fname=$1 ; shift ;
+    {
+        ds-zl::info "args for '$fname' :" 2>&1 ;
+        _zv-multi::argshow $@ ;
+    } >&2 ;
+}
+_zvm-debug-call() {
+    _zvm-is-debug || return 0;
+    local func=$1 ; shift ;
+    if ! ${func} $@ ; then
+        if type $func 2>/dev/null | grep -E 'function' 1>/dev/null; then
+            return 1 ;
+        fi
+        ds-zl::fatal "'$func' is not a function"
+        exit 1 ; # not reached
+    fi
+}
+
+_zv-multi::argshow() {
+    echo "${(j:, :)${(@qq)argv}}" \
+        | gawk '{ printf("  [%02d] %s\n", NR-1, $0); }'
+}
+_zv-multi::argshow-ref() {
+    _zv-multi::argshow ${${(P)1}[@]}
+}
+
+_zv-multi::call-zinve-for-named-venv() {
+    _zvm-debug-args "$0 pre-zparse" $@ ;
+    local -A optmap ;
+    optmap=( '-p' "$ZVMULTI__DEFAULT_INTERPRETER" )
+    zparseopts -D -E -A optmap -K -M \
+        p: -python:=p n: -name:=n \
+        c: -zinve-cmd:=c a: -user-args-ref:=a
+
+    _zvm-debug-call ds-zl::pprint::associative 'optmap'
+
+    _zvm-debug-args "$0 post-zparse" $@ ;
+    local pybin="" vname="" zv_cmd;
+
+    read -r pybin < <( ds-zl::get-key optmap '-p' "" )
+    if [[ $pybin == "" ]]; then
+        ds-zl::fatal "Specify a python interpreter (--python / -p)."
+    fi
+
+    read -r vname < <( ds-zl::get-key optmap '-n' "" )
+    if [[ $vname == "" ]]; then
+        ds-zl::fatal "Specify a virtualenv name (--name / -n)."
+    fi
+
+    read -r zv_cmd < <( ds-zl::get-key optmap '-c' "" )
+    if [[ $zv_cmd == "" ]]; then
+        ds-zl::fatal "Specify a zinve command (--zinve-cmd / -c)."
+    fi
+
+    local -a req_fs ; req_fs=() ;
+    req_fs+=( "${(f@)$(_zv-multi::ls-venv-reqs $vname)}" )
+
+    local rflag='-r' ;
+    req_fs=( ${rflag:^^req_fs} )
+
+    local -a full_call ; full_call=() ;
+    full_call+=(
+        "${ZVMULTI__ZINVE_BIN}" "$zv_cmd"
+        -p "$pybin"
+        -d "$ZVMULTI__VENVS_ROOT_D/${vname}"
+        ${req_fs[@]}
+    )
+
+    local uarg_ref="" ;
+    read -r uarg_ref < <( ds-zl::get-key optmap '-a' "" )
+    if [[ $uarg_ref != "" ]]; then
+        if [[ -z ${${(P)uarg_ref}+x} ]]; then
+            ds-zl::fatal "$0 : --user-args : invalid reference '$uarg_ref'" ;
+        elif [[ ${#${(P)uarg_ref}} -gt 0 ]]; then
+            full_call+=( '--' ${${(P)uarg_ref}[@]} )
+        fi
+    fi
+
+    if false; then
+        ds-zl::info "Will exec:"
+        printf '%*s| %s\n\n' 6 "" "${(j: :)${(@qq)full_call}}" >&2 ;
+    fi
+    exec ${full_call[@]}
+}
+
+
+if [[ -z ${__UNSET+x} ]]; then
+    typeset -rgx __UNSET="__UNSET__"
+fi
+
+typeset -rg ZVMULTI__DEFAULT_ZINVE_BIN="${ZVMULTI__SELF_PATH:h}/zinve"
+
+if [[ -z ${ZVMULTI__ZINVE_BIN+x} ]]; then
+    typeset -gx ZVMULTI__ZINVE_BIN="${__UNSET}"
+    if [[ -e ${ZVMULTI__DEFAULT_ZINVE_BIN} ]]; then
+        ZVMULTI__ZINVE_BIN=${ZVMULTI__DEFAULT_ZINVE_BIN}
+    fi
+fi
+
+if [[ -z ${ZVMULTI__REQS_ROOT_D+x} ]]; then
+    typeset -gx ZVMULTI__REQS_ROOT_D="${__UNSET}"
+fi
+
+if [[ -z ${ZVMULTI__VENVS_ROOT_D+x} ]]; then
+    typeset -gx ZVMULTI__VENVS_ROOT_D="${__UNSET}"
+fi
+
+# explanation:
+# * `_ZVMULTI__DEFAULT_X2_INTERPRETER` is "private", whatever that
+#   means to you, and is our *actual* default.
+# * `ZVMULTI__DEFAULT_INTERPRETER` is likewise "public": we expect
+#   the user to fuck with it.
+# * The redundancy helps clear up potential ambiguity as to what
+#   the user has specified. If we only had one variable, and if the
+#   user happened to specify the same default as our own -- e.g.
+#   'python3' -- we would end in the same state as if the user hadn't
+#   specified anything.
+# * We need this information because trust me, we do. We need it in order to
+#   not fuck up options / settings / config / whatever you want to call it.
+#   A large part of getting this "right" is simple data provenance, just
+#   on a much smaller scale than we usually talk about.
+# * When we get to the end of introductions and option parsing and all that,
+#   and we're about to take some (potentially destructive) action, we should
+#   know exactly how any individual setting came to have its current value.
+#   For our purposes here, "setting" means: any parameter that influences
+#   what action we ultimately take, with a granularity appropriate for
+#   command-line flags.
+# * These things can get their option in many ways: config file; env var;
+#   CLI flag; user-configurable default; private/internal default... It's a
+#   long list, and each case can have a surprising number of details /
+#   edge cases / expectations / etc. associated.
+#   More broadly, notice that this list only mentions fairly explicit cases.
+#   In each type, it's easy to imagine a source of "truth" that could
+#   realistically answer the question at hand.
+# * Most real applications veer into a fuzzier, more implicit
+#   world. Here, default values are determined by pulling them out of our
+#   asses and hoping for the best. There are more polite euphemisms:
+#   "Heuristics." "Do what I mean." "Smart defaults." They boil down
+#   to trying to be clever, trying to do what the user wants without forcing
+#   them to spell it out.
+#   This is often very necessary. Side note: less often, but
+#   still quite commonly, all of this goes very badly.
+#
+if [[ -z ${_ZVMULTI__DEFAULT_X2_INTERPRETER+x} ]]; then
+    typeset -gx _ZVMULTI__DEFAULT_X2_INTERPRETER="python3"
+fi
+export ZVMULTI__DEFAULT_X2_INTERPRETER
+if [[ -z ${ZVMULTI__DEFAULT_INTERPRETER+x} ]]; then
+    typeset -gx ZVMULTI__DEFAULT_INTERPRETER=""
+fi
+export ZVMULTI__DEFAULT_INTERPRETER
+if [[ -z ${ZVMULTI__INTERPRETER+x} ]]; then
+    typeset -gx ZVMULTI__INTERPRETER=""
+fi
+export ZVMULTI__INTERPRETER
+
+if [[ -z ${ZVMULTI__AUTO_WORKDIR+x} ]]; then
+    typeset -gx ZVMULTI__AUTO_WORKDIR="${__UNSET}"
+fi
+if [[ -z ${ZVMULTI__AUTO_VENVS_ROOT_REL+x} ]]; then
+    typeset -gx ZVMULTI__AUTO_VENVS_ROOT_REL='tmp/zvmulti-venvs.d'
+fi
+if [[ -z ${ZVMULTI__AUTO_REQS_ROOT_REL+x} ]]; then
+    typeset -gx ZVMULTI__AUTO_REQS_ROOT_REL='zvmulti-reqs.d'
+fi
+
+__zvmulti::git::get-toplevel() {
+    local topd="" ;
+    local -i rc=0 ;
+    local from_dir=""
+    if [[ $# -gt 0 ]]; then
+        from_dir=$1 ; shift ;
+    fi
+
+    [[ $from_dir == "" ]] || pushd $from_dir ;
+    if ! read -r topd < <( git rev-parse --show-toplevel 2>/dev/null ) ; then
+        rc=1 ;
+    fi
+    [[ $from_dir == "" ]] || popd ;
+
+    if [[ $rc -eq 0 ]]; then
+        echo $topd
+    fi
+    return $rc ;
+}
+
+__zvmulti::git::is-git-path() {
+    __zvmulti::git::get-toplevel $@ &>/dev/null || return 1 ;
+}
+
+__zvmulti-fixup-env-step::zinve-bin() {
+    if [[ ${ZVMULTI__ZINVE_BIN} != "${__UNSET}" ]]; then
+        return
+    fi
+    maybe_zv=""
+    if read -r maybe_zv < <( whence -p zinve 2>/dev/null ); then
+        ZVMULTI__ZINVE_BIN=${maybe_zv}
+        export ZVMULTI__ZINVE_BIN
+        return ;
+    fi
+    ds-zl::warn "Can't find zinve.  I've checked:"
+    {
+        printf '* The path given by $ZVMULTI__ZINVE_BIN, if defined.\n' ;
+        printf '* Fallback path %s.\n' "'$ZVMULTI__DEFAULT_ZINVE_BIN'" ;
+        printf '* The current PATH: %s\n' "'$PATH'" ;
+    } | sed -r 's/^/      /' >&2 ;
+    ds-zl::fatal "Can't find zinve."
+}
+
+__zvmulti-fixup-env::err-missing-no-auto() {
+    local -A missmap ;
+    missmap=(
+        'ZVMULTI__VENVS_ROOT_D' '--venvs-dir'
+        'ZVMULTI__REQS_ROOT_D' '--requirements-dir'
+    )
+    local emsg="Some options are not defined in the environment"
+    emsg+=" and were not given by the command-line args."
+    emsg+=" Those options are:"
+    ds-zl::warn "$emsg"
+
+    local ok="" ov=""
+    for ok ov in ${(kv)missmap}; do
+        if [[ ${(P)ok} == ${__UNSET} ]]; then
+            printf '* %s (%s)\n' "$ok" "$ov"
+        fi
+    done | sed -r 's/^/      /' ;
+
+    emsg="" ;
+    ds-zl::warn $emsg ;
+
+    cat - >&2 <<-EOD
+Depending on the given 'auto_workdir', I can sometimes guess reasonable
+values for these.
+
+auto_workdir is determined by the first non-falsy value out of:
+    * '--auto-dir' command line flag
+    * ZVMULTI__AUTO_WORKDIR environment variable.
+    * "\$(pwd)" (which is never falsy).
+
+auto_workdir is currently: "$ZVMULTI__AUTO_WORKDIR"
+
+When auto_workdir is inside of a git repo, I can use the following
+defaults relative to that repo's root:
+EOD
+    local -A defaultmap ;
+    defaultmap=(
+        'ZVMULTI__VENVS_ROOT_D' 'ZVMULTI__AUTO_VENVS_ROOT_REL'
+        'ZVMULTI__REQS_ROOT_D' 'ZVMULTI__AUTO_REQS_ROOT_REL'
+    )
+    for ok ov in ${(kv)missmap}; do
+        if [[ ${(P)ok} == ${__UNSET} ]]; then
+            printf '* %s : "%s" (defined by %s)\n' "$ok" "${(P)ov}" "$ov"
+        fi
+    done | sed -r 's/^/      /' ;
+
+    cat - >&2 <<-EOD
+
+Sady, the auto_workdir is not a git repo. There's nothing I can do for you.
+
+EOD
+
+    ds-zl::fatal "Invalid configuration."
+
+}
+
+__zvmulti-fixup-env() {
+    local auto_d=${ZVMULTI__AUTO_WORKDIR}
+    if [[ ${auto_d} == "${__UNSET}" ]]; then
+        auto_d="$(pwd)"
+    fi
+    auto_d=${auto_d:A}
+    export ZVMULTI__AUTO_WORKDIR=$auto_d ;
+    local auto_root_d=""
+    local have_rd=false have_vd=false ;
+
+    [[ ${ZVMULTI__VENVS_ROOT_D} == "${__UNSET}" ]] || have_vd=true ;
+    [[ ${ZVMULTI__REQS_ROOT_D} == "${__UNSET}" ]] || have_rd=true ;
+    __zvmulti-fixup-env-step::zinve-bin ;
+    if (( $have_vd )) && (( $have_rd )); then
+        return ;
+    fi
+    local git_root="" ;
+    if ! read -r git_root < <( __zvmulti::git::get-toplevel $auto_d ) ; then
+        __zvmulti-fixup-env::err-missing-no-auto ;
+        exit 1 ; # not reached
+    fi
+    if ((! $have_vd )); then
+        ZVMULTI__VENVS_ROOT_D="${git_root}/${ZVMULTI__AUTO_VENVS_ROOT_REL}"
+        export ZVMULTI__VENVS_ROOT_D
+    fi
+    if ((! $have_rd )); then
+        ZVMULTI__REQS_ROOT_D="${git_root}/${ZVMULTI__AUTO_REQS_ROOT_REL}"
+        export ZVMULTI__REQS_ROOT_D
+    fi
+}
+
+function zv-multi-cmd::exec () {
+    _zvm-debug-args $0 $@ ;
+    local -a user_args ; user_args=() ;
+    local -a czv_args; czv_args=() ;
+
+    local curr="" ;
+    while [[ $# -gt 0 ]] && [[ $1 != '--' ]]; do
+        curr=$1 ; shift ;
+        czv_args+=( $curr )
+    done
+
+    if [[ $# -gt 0 ]]; then
+        if [[ $1 == '--' ]]; then
+            shift ;
+            if [[ $# -gt 0 ]]; then
+                user_args+=( $@ ) ;
+                shift $# ;
+            else
+                ds-zl::fatal "'--' flag must be followed by arguments."
+            fi
+        else
+            ds-zl::warn "Received $# unexpected argument(s) :"
+            _zv-multi::argshow $@ >&2;
+            local emsg="If these arguments specify the command you"
+            emsg+="want to run in venv"
+            emsg+=" '$vname', add a '--' flag right before arg '$1' [0]."
+            ds-zl::warn $emsg;
+            ds-zl::fatal "Unexpected arguments"
+        fi
+    else
+        ds-zl::warn "$0 : no command specified; defaulting to 'python'"
+        user_args+=( 'python' )
+    fi
+    czv_args+=( '-c' 'exec' '-a' 'user_args' )
+    _zv-multi::call-zinve-for-named-venv ${czv_args[@]}
+}
+
+__runit() {
+    _zvm-debug-args $0 $@ ;
+    local -A opts1 ;
+    zparseopts -D -E -K -A opts1 -M \
+        -requirements-dir: -venvs-dir: -auto-dir:
+
+    local rk="--requirements-dir" vk="--venvs-dir" wk='--auto-dir'
+    local keyval="" ;
+    read -r keyval < <( ds-zl::get-key opts1 $rk ${__UNSET} ) ;
+    if [[ $keyval != ${__UNSET} ]]; then
+        export ZVMULTI__REQS_ROOT_D=${keyval}
+    fi
+
+    keyval="" ;
+    read -r keyval < <( ds-zl::get-key opts1 $vk ${__UNSET} ) ;
+    if [[ $keyval != ${__UNSET} ]]; then
+        export ZVMULTI__VENVS_ROOT_D=${keyval}
+    fi
+
+    keyval=""
+    read -r keyval < <( ds-zl::get-key opts1 $wk ${__UNSET} ) ;
+    if [[ $keyval != ${__UNSET} ]]; then
+        export ZVMULTI__AUTO_WORKDIR=${keyval}
+    fi
+
+    __zvmulti-fixup-env ;
+
+    ds-zl-cmder::conf::prefix 'zv-multi-cmd' ;
+    ds-zl-cmder::conf::name ${ZVMULTI__BASEN} ;
+    ds-zl-cmder::dispatch $@ ;
+
+}
+
+__runit $@ ;
+
+# vi: set syn=zsh ft=zsh
